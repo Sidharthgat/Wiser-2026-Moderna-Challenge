@@ -1,0 +1,543 @@
+# Packages and other functions
+
+# Qiskit, OF, other packages
+# %pip install "numpy>=2.4.0,<2.5.0"
+from decimal import Decimal
+try:
+    from numba import njit  # ADD THIS TO LOOP HEAVY PARTS OF THE BUT NOT TO PARTS INVOLVING QISKIT AND OPFERMION PACKAGES SO IT DOESN'T BREAK
+except ImportError:
+    %pip install numba
+    from numba import njit
+# @njit
+# !pip install --upgrade samplomatic
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import math
+import random
+import networkx as nx
+try:
+    import rustworkx as rx
+except ImportError:
+    %pip install rustworkx
+from rustworkx.visualization import mpl_draw as draw_graph
+import numpy as np
+from functools import reduce
+import pandas as pd
+from collections import defaultdict
+from typing import Sequence
+import time
+
+try:
+    from qiskit import QuantumCircuit, transpile
+except ImportError:
+    %pip install qiskit qiskit
+    from qiskit import QuantumCircuit, transpile
+from qiskit.quantum_info import SparsePauliOp, Statevector, Operator, Pauli, commutator
+from qiskit.circuit.library import QAOAAnsatz, PauliEvolutionGate
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+try:
+    from qiskit_ibm_runtime import QiskitRuntimeService, Session, EstimatorV2 as Estimator, SamplerV2 as Sampler
+except ImportError:
+    %pip install qiskit-ibm-runtime
+try:
+    from qiskit_aer import Aer, AerSimulator
+except ImportError:
+    !pip install qiskit qiskit-aer
+from qiskit.circuit import Parameter
+from qiskit.primitives import StatevectorSampler
+from qiskit.visualization import plot_bloch_multivector, plot_histogram
+try:
+    from qiskit_nature.second_q.circuit.library import HartreeFock
+    from qiskit_nature.second_q.mappers import JordanWignerMapper
+    from openfermion.chem import geometry_from_pubchem
+except ImportError:
+    %pip install qiskit-nature
+    from qiskit_nature.second_q.circuit.library import HartreeFock
+    from qiskit_nature.second_q.mappers import JordanWignerMapper
+from scipy.optimize import minimize
+from scipy.linalg import norm, expm
+try:
+    import openfermion as of
+except ImportError:
+    %pip install openfermion
+import openfermion as of
+import openfermion.utils
+from openfermion.utils import hermitian_conjugated
+from openfermion.transforms import jordan_wigner, bravyi_kitaev, reverse_jordan_wigner, get_interaction_operator, get_fermion_operator
+from openfermion.linalg import get_sparse_operator, expectation, qubit_operator_sparse
+from openfermion.ops import QubitOperator, FermionOperator
+from openfermion.chem import MolecularData
+try:
+    import h5py
+except ImportError:
+    %pip install h5py
+try:
+    import pytest
+except ImportError:
+    %pip install pytest
+import re
+import requests
+import zipfile
+from io import BytesIO
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    !pip install beautifulsoup4
+    from bs4 import BeautifulSoup
+import gc
+import json
+import os
+import sys
+from IPython.display import clear_output
+import pickle
+# Make sure you have an electronic structure plugin installed (e.g., pip install openfermionpyscf)
+if sys.platform.startswith(('darwin', 'linux')):
+    try:
+        from openfermionpyscf import run_pyscf
+    except:
+        %pip install openfermionpyscf
+        from openfermionpyscf import run_pyscf
+
+
+#Hamlib scripts v3 (v26.5.8)
+import re
+def parse_through_hdf5(func):
+    """
+    Decorator function that iterates through an HDF5 file and performs
+    the action specified by â€˜ func â€˜ on the internal and leaf nodes in the
+    HDF5 file.
+    """
+
+    def wrapper(obj, path='/', key=None):
+        if type(obj) in [h5py._hl.group.Group, h5py._hl.files.File]:
+            for ky in obj.keys():
+                func(obj, path, key=ky, leaf=False)
+                wrapper(obj=obj[ky], path=path + ky + '/', key=ky)
+        elif type(obj) is h5py._hl.dataset.Dataset:
+            func(obj, path, key=None, leaf=True)
+    return wrapper
+
+def print_hdf5_structure(fname_hdf5: str):
+    """
+    Print the path structure of the HDF5 file.
+
+    Args
+    ----
+    fname_hdf5 ( str ) : full path where HDF5 file is stored
+    """
+
+    @parse_through_hdf5
+    def action(obj, path='/', key=None, leaf=False):
+        if key is not None:
+            print(
+                (path.count('/') - 1) * '\t', '-', key, ':', path + key + '/'
+            )
+        if leaf:
+            print((path.count('/') - 1) * '\t', '[^^ DATASET ^^]')
+
+    with h5py.File(fname_hdf5, 'r') as f:
+        action(f['/'])
+
+def get_hdf5_keys(fname_hdf5: str):
+    """ Get a list of keys to all datasets stored in the HDF5 file.
+
+    Args
+    ----
+    fname_hdf5 ( str ) : full path where HDF5 file is stored
+    """
+
+    all_keys = []
+
+    @parse_through_hdf5
+    def action(obj, path='/', key=None, leaf=False):
+        if leaf is True:
+            all_keys.append(path[:-1])
+
+    with h5py.File(fname_hdf5, 'r') as f:
+        action(f['/'])
+    return all_keys
+
+def read_graph_hdf5(fname_hdf5: str, key: str):
+    """Read networkx graphs from appropriate hdf5 file.
+    Returns a single graph, with specified key
+    """
+    with h5py.File(fname_hdf5, 'r') as f:
+        G = nx.Graph(list(np.array(f[key])))
+
+    return G
+
+def read_gridpositions_hdf5(fname_hdf5: str, key: str):
+    """Read grid positions, stored as attribute of each networkx graph from appropriate hdf5 file
+    Returns grid positions of nodes associated with a single graph, with specified key
+    """
+    with h5py.File(fname_hdf5, 'r') as f:
+        dataset = f[key]
+        gridpositions_dict = dict(dataset.attrs.items())
+
+    return gridpositions_dict
+
+def read_openfermion_hdf5(fname_hdf5: str, key: str, optype=of.QubitOperator):
+    """
+    Read any openfermion operator object from HDF5 file at specified key.
+    'optype' is the op class, can be of.QubitOperator or of.FermionOperator.
+    """
+
+    with h5py.File(fname_hdf5, 'r', libver='latest') as f:
+        op = optype(f[key][()].decode("utf-8"))
+    return op
+
+def read_qiskit_hdf5(fname_hdf5: str, key: str):
+    """
+    Read the operator object from HDF5 at specified key to qiskit SparsePauliOp
+    format.
+    """
+    def _generate_string(term):
+        # change X0 Z3 to XIIZ
+        indices = [
+            (m.group(1), int(m.group(2)))
+            for m in re.finditer(r'([A-Z])(\d+)', term)
+        ]
+        return ''.join(
+            [next((char for char, idx in indices if idx == i), 'I')
+             for i in range(max(idx for _, idx in indices) + 1)]
+        )
+
+    def _append_ids(pstrings):
+        # append Ids to strings
+        return [p + 'I' * (max(map(len, pstrings)) - len(p)) for p in pstrings]
+
+    with h5py.File(fname_hdf5, 'r', libver='latest') as f:
+        pattern = r'([\d.]+) \[([^\]]+)\]'
+        matches = re.findall(pattern, f[key][()].decode("utf-8"))
+
+        labels = [_generate_string(m[1]) for m in matches]
+        coeffs = [float(match[0]) for match in matches]
+        op = SparsePauliOp(_append_ids(labels), coeffs)
+    return op
+
+def read_mat2qubit_hdf5(fname_hdf5: str, key: str):
+    """Returns mat2qubit.qSymbOp operator from hdf5 file"""
+    with h5py.File(fname_hdf5, 'r') as f:
+        op = m2q.qSymbOp(f[key][()].decode("utf-8"))
+
+    return op
+
+def read_clause_list_hdf5(fname_hdf5: str, key: str):
+    """read clause list from appropriate hdf5 file
+
+    Returns clause list in DIMACS format
+    """
+    clause_list = []
+    with h5py.File(fname_hdf5, 'r') as f:
+        for clause in list(np.array(f[key])):
+            clause_list.append([v for v in clause])
+
+    return clause_list
+
+#Personal scripts (v26.5.8)
+def My_Hamlib_Hp_generator(file, key, qubit_mapping_method, num_qubits=num_qubits):
+    if key != None:
+        if key.startswith('/ham_molec'):
+            OPF = read_openfermion_hdf5(file, key, of.FermionOperator)
+            OPF = qubit_mapping_method(OPF)
+        else:
+            OPF = read_openfermion_hdf5(file, key, of.QubitOperator)
+        # print(OPF, type(OPF), '\n',str(list(OPF)[0]))
+    elif key == None:
+        OPF = file
+        # print(list(OPF)[:20])
+    string_list=[]
+    coeff_list=[]
+    for z in range(len(list(OPF))):
+        text = (str(list(OPF)[z]))
+        # print(text)
+        O = text.split('[')
+        # print(O)
+        if O[0]=='':
+            O2=[0]
+            O1=['I']
+        else:
+            O1 = O[1].split(']')[0].split(' ')
+            if len(O1[0])!=0: #Checks if it's empty pauli string aka IDENTITY
+                O1 = [re.sub(r'\d+$', '', a) for a in O1] #[a[:-1] for a in O1]
+                O2 = [int(O[1].split(']')[0].split(' ')[i].split(O1[i])[1]) for i in range(len(O1))]
+            else:
+                O2=[0]
+                # O1+=['I']
+        # print(O1, O2)
+        comb = [(O2[i], O1[i]) for i in range(len(O1))]
+        # print(comb)
+        n=0
+        string=''
+        for i,j in comb:
+            string+='I'*(i-n)+j
+            n=i+1
+        if O[0]=='':
+            coeff = complex(0)
+        elif ')' in O[0]:
+            coeff = complex((O[0].split(')'))[0].split('(')[1])
+        else:
+            coeff = complex(O[0])
+        # print(coeff, string)
+        string_list.append(string)
+        coeff_list.append(coeff)
+    # max_length = np.max([len(s) for s in string_list])
+    string_list = [op+'I'*(num_qubits-len(op)) for op in string_list]
+    # print(string_list)
+    return string_list, coeff_list, num_qubits
+
+
+def rna_conflict_graph():
+    global Hc_full, Hc, Hm, num_qubits
+    
+    # Toy RNA Sequence: 'C A G U G C' (Nucleotide indices 0 to 5)
+    # We define our 5 Qubits as the 5 possible valid base pairs:
+    # Qubit 0: C0 pairs with G2
+    # Qubit 1: C0 pairs with G4
+    # Qubit 2: A1 pairs with U3
+    # Qubit 3: G2 pairs with C5
+    # Qubit 4: U3 pairs with G4 (Wobble pair)
+    num_qubits = 5
+    
+    # Edges represent structural conflicts. 
+    # For example, Qubit 0 and Qubit 1 both require nucleotide C0. They cannot both exist!
+    edges = [
+        (0, 1),  # Conflict at C0
+        (0, 3),  # Conflict at G2
+        (1, 4),  # Conflict at G4
+        (2, 4)   # Conflict at U3
+    ]
+    
+    G = nx.Graph()
+    G.add_nodes_from(range(num_qubits))
+    G.add_edges_from(edges)
+
+
+# Graph representation
+
+    # Visualization
+    nx.draw(G, with_labels=True, node_color='lightblue', node_size=800, font_weight='bold')
+    plt.title("RNA Base-Pair Conflict Graph")
+    plt.show()
+
+    # --- 2. Build Cost Hamiltonian (Hc) ---
+    Hc = QubitOperator()
+    
+    # Reward: Encourage base pairs (-0.5 Z_i)
+    for i in range(num_qubits):
+        Hc += QubitOperator(f'Z{i}', -0.5)
+    
+    # Penalty: Discourage structural conflicts (+ P/4 Z_i Z_j - P/4 Z_i - P/4 Z_j)
+    penalty = 2.0
+    for i, j in edges:
+        Hc += QubitOperator(f'Z{i} Z{j}', penalty / 4.0)
+        Hc += QubitOperator(f'Z{i}', -penalty / 4.0)
+        Hc += QubitOperator(f'Z{j}', -penalty / 4.0)
+    
+    # Convert to matrix for Interpolated QAOA
+    Hc = qubit_operator_sparse(Hc, n_qubits=num_qubits).toarray()
+    Hc_full = Hc
+
+    # --- 3. Build Mixer Hamiltonian (Hm) ---
+    Hm = QubitOperator()
+    
+    # Standard Transverse-Field Mixer (Sum of X_i)
+    for i in range(num_qubits):
+        Hm += QubitOperator(f'X{i}', 1.0)
+    Hm = qubit_operator_sparse(Hm, n_qubits=num_qubits).toarray()
+    return Hc_full, Hc, Hm, num_qubits, edges, G
+
+# Execute the mapping
+Hc_full, Hc, Hm, num_qubits, edges, G = rna_conflict_graph()
+print("Number of Qubits:", num_qubits)
+print("Conflict Edges:", edges)
+
+# Main code
+
+def apply_ansatz(state, Hc, Hm, para_list):
+    # print("State norm:", np.linalg.norm(state))
+    depth = len(para_list)//2
+    for d in range(depth):
+        state = expm(-1j*para_list[d]*Hm) @ expm(-1j*para_list[depth+d]*Hc) @ state
+    # print("State norm:", np.linalg.norm(state))
+    return state
+
+def EV(state, Hc):
+    state2 = Hc @ state
+    ev = np.vdot(state, state2)
+    return ev
+ 
+def Exact(Hc_full):
+    eigenvalues, eigenvectors = np.linalg.eigh(Hc_full)
+    # degenerate_indices = np.where(energies == min_energy)[0] # DANGEROUS: Do not do this; miss degeneracy due to floating point error
+    degenerate_indices = np.where(np.isclose(eigenvalues, eigenvalues[0], atol=1e-12))[0]
+    # print(f"Ground state energy: {eigenvalues[0]}")
+    # print(f"Degeneracy level: {len(degenerate_indices)}")
+    # Extract all degenerate eigenvectors)
+    for idx in degenerate_indices:
+        Hc_full[idx] = eigenvectors[:, idx]
+        # print(f"Statevector {idx}: {Hc[idx]}")
+    return [Hc_full[idx] for idx in degenerate_indices], eigenvalues[0]
+
+def objective(coeff_list, state, Hc, Hm, depth):
+    global cost_function_access, layers_evaluated
+    cost_function_access+=1
+    layers_evaluated+=depth
+    
+    c_count = len(coeff_list)//2
+    para_list = coeff_to_angles(coeff_list[:c_count], coeff_list[c_count:], depth)
+    state = apply_ansatz(state, Hc, Hm, para_list)
+    ev = EV(state, Hc)
+    return np.real(ev)
+
+# Array version
+def coeff_to_angles(coeff_list_gamma, coeff_list_beta, depth):        
+    gammas = np.array([])
+    betas = np.array([])        
+    for d in range(depth):
+        x = (d+1)/depth
+        if depth <=1:
+            gammas = np.append(gammas, [0])
+            betas = np.append(betas, [1])
+        else:
+            gammas = np.append(gammas, [Chebyshev_poly(x, coeff_list_gamma)])
+            betas = np.append(betas, [Chebyshev_poly(x, coeff_list_beta)])
+    para_list = np.concatenate((gammas, betas))
+    return para_list
+    
+# Array version
+def Chebyshev_poly(x, coeff_list):
+    Poly_value = 0
+    for j in range(len(coeff_list)):
+        Poly_value += ( coeff_list[j]*math.cos(j*math.acos(2*x-1)) )
+    return Poly_value
+    
+def II_QAOA(state, num_qubits, Hc, Hm, depth, dp, target_chemical_error, epsilon, tau_max, coeff_list, maxiter, method, plot=None):
+    print("State shape:", state.shape)      # Should be (32,)
+    print("Hc matrix shape:", Hc.shape)     # Should be (32, 32)
+    print("Hm matrix shape:", Hm.shape)     # Should be (32, 32)
+    tau=0
+    delE=math.inf
+    ev=math.inf
+    truegStates, trueGE = Exact(Hc_full)
+    print(f"G states={truegStates[0][0], '...'}")
+    plot_data=[[],[],[]]
+    
+    while delE > target_chemical_error:
+        result = minimize(objective, coeff_list, method=method, options={'maxiter':maxiter}, tol=1e-4, args=(state, Hc, Hm, depth))
+        print('Success' if result.success else f'Failed:{result.message}')
+        coeff_list, delE= result.x, (result.fun - trueGE)
+        
+        print( f"N={num_qubits} | Depth={depth} | Coeffs={len(coeff_list)} | True Min={trueGE:.4f} | EV={result.fun:.4f} | Target CE={target_chemical_error} | CE={result.fun - trueGE} | cost_function_access={cost_function_access} | layers_evaluated={layers_evaluated}")
+
+        #for p in plot:
+        plot_data[0].append((result.fun - trueGE))
+        plot_data[1].append(depth)
+        
+        if  abs(ev-result.fun) < epsilon:
+            tau+=1
+        else:
+            tau = 0
+        if tau >= tau_max:
+            coeff_list_gamma, coeff_list_beta = coeff_list[:len(coeff_list)//2], coeff_list[len(coeff_list)//2:]
+            coeff_list_gamma, coeff_list_beta = np.append(coeff_list_gamma, 0.0), np.append(coeff_list_beta, 0.0)
+            coeff_list = np.concatenate([coeff_list_gamma, coeff_list_beta])
+            tau = 0
+        depth += dp
+        ev = result.fun
+    # clear_output(wait=True)
+    for p in plot:
+        p(chemical_accuracy = plot_data[0], depth = plot_data[1], target_chemical_error=target_chemical_error, num_qubits=num_qubits, label=label)
+    fig
+
+label, depth, color=f'rna_conflict_graph', 5, 'green'  
+# random_vector = np.random.default_rng().random(size=2**num_qubits)
+# random_vector = random_vector / np.linalg.norm(random_vector)
+
+
+
+convention = 'interleaved'
+cost_function_access = 0
+layers_evaluated = 0
+
+II_QAOA(
+    num_qubits= num_qubits,
+    state = np.ones(2**num_qubits)/np.sqrt(2**num_qubits), # hf_state(Hc),
+    Hc= Hc,
+    Hm= Hm,
+    depth=depth,
+    dp=2,
+    target_chemical_error = 1e-3,
+    epsilon=1e-5,
+    tau_max = 5,
+    coeff_list = [0.0,0.1,-0.1,0.1],
+    maxiter=1000,
+    method='COBYLA',
+    plot=[plot_chemacc_vs_depth],
+)
+
+fig
+
+# Plot functions
+
+fig, ax1 = None, None
+fig, ax1 = plt.subplots(1, 1, figsize=(5, 5), layout='tight')
+ax1.set_title(f'chemical_error vs layers')
+ax1.set_xlabel('p (# of layers)')
+ax1.set_ylabel('<Hc>(P) - true ground E')
+
+def plot_chemacc_vs_depth(chemical_accuracy, depth, target_chemical_error, num_qubits, label):
+    global fig, ax1
+    # ax1, ax2, ax3 = axs.flatten()
+    if fig is None or ax1 is None:
+        fig, ax1 = plt.subplots(1, 1, figsize=(5, 5), layout='tight')
+        ax1.set_title(f'chemical_error vs layers')
+        ax1.set_xlabel('p (# of layers)')
+        ax1.set_ylabel('<Hc>(P) - true ground E (Hartree)')
+    ax1.plot(depth, chemical_accuracy , ls='-', marker='o', c=color, label=label)
+    ax1.axhline(y=target_chemical_error, color='gray', linestyle='--', label=f'target ground energy accuracy={target_chemical_error}')
+    ax1.legend()
+    # plt.draw()
+    return ax1.get_figure(), ax1
+    
+def plot_gamma_and_beta_polynomails(coeff_list, ev, num_qubits, depth):
+    coeff_list_gamma, coeff_list_beta = coeff_list[:len(coeff_list)//2], coeff_list[len(coeff_list)//2:]
+    fig, ax1 = plt.subplots(1, 1, figsize=(5, 5), layout='tight')
+    # ax1, ax2, ax3 = axs.flatten()
+    ax1.set_title(f'Gamma(p) and Beta(p)')
+    ax1.set_xlabel('p (# of layers)')
+    ax1.set_ylabel('Gamma/Beta')
+    
+    para_list = coeff_to_angles(coeff_list_gamma, coeff_list_beta, depth)
+    ax1.plot([p+1 for p in range(depth)], para_list[:len(para_list)//2] , ls='-', marker='o', c='r', label='Gamma')
+    ax1.plot([p+1 for p in range(depth)], para_list[len(para_list)//2:] , ls='-', marker='o', c='b', label='Beta')
+    ax1.legend()
+    # plt.show()
+    return ax1.get_figure(), ax1
+
+def plot_p_vs_N(coeff_list_gamma, coeff_list_beta, ev_new, num_qubits, depth, edges, weights):
+    # for i in range(5):
+    fig, ax1 = plt.subplots(1, 1, figsize=(5, 5), layout='tight')
+    # ax1, ax2, ax3 = axs.flatten()
+    ax1.set_title(f'p vs N (# qubits)')
+    ax1.set_ylabel('p (# of layers)')
+    ax1.set_xlabel('N (# qubits)')
+    
+    ax1.plot([n+2 for n in num_qubits], depth, marker='o', c='b', label='Sk model')
+        # ax1.plot([p+1 for p in range(depth)], para_list[len(para_list)//2:] , ls='-', marker='o', c='b', label='Beta')
+    line = ax1.lines[0]  # Change index if you have multiple lines
+    x_data = line.get_xdata()
+    y_data = line.get_ydata()
+    
+    # Combine into a DataFrame and compute the mean for each x value
+    df = pd.DataFrame({'x': x_data, 'y': y_data})
+    averaged_df = df.groupby('x').mean().reset_index()
+    
+    # Extract averaged arrays
+    x_avg = averaged_df['x'].to_numpy()
+    y_avg = averaged_df['y'].to_numpy()
+    
+    # Plot the new averaged data
+    ax1.plot(x_avg, y_avg, color='orange', linewidth=2, label='Averaged')
+    ax1.legend()
+    return ax1.get_figure(), ax1
